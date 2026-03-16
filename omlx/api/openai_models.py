@@ -147,6 +147,9 @@ class ChatCompletionRequest(BaseModel):
     response_format: Optional[Union[ResponseFormat, dict]] = None
     # Chat template kwargs (e.g. enable_thinking, reasoning_effort)
     chat_template_kwargs: Optional[Dict[str, Any]] = None
+    # Thinking budget control
+    thinking_budget_min: Optional[int] = None  # Min thinking tokens before </think> allowed
+    thinking_budget_max: Optional[int] = None  # Max thinking tokens before </think> forced
 
 
 class AssistantMessage(BaseModel):
