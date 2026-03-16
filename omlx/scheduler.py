@@ -2675,6 +2675,39 @@ class Scheduler:
                 request.sampling_params
             )
 
+            # Inject thinking budget processor if budgets are set
+            if (request.sampling_params.thinking_budget_min is not None
+                    or request.sampling_params.thinking_budget_max is not None):
+                # Resolve <think> token ID
+                think_start_id = getattr(self.tokenizer, 'think_start_id', None)
+                if think_start_id is None:
+                    try:
+                        think_start_id = self.tokenizer.convert_tokens_to_ids("<think>")
+                        if think_start_id == self.tokenizer.unk_token_id:
+                            think_start_id = None
+                    except (AttributeError, KeyError, TypeError):
+                        pass
+
+                # Resolve </think> token ID
+                think_end_id = getattr(self.tokenizer, 'think_end_id', None)
+                if think_end_id is None:
+                    try:
+                        think_end_id = self.tokenizer.convert_tokens_to_ids("</think>")
+                        if think_end_id == self.tokenizer.unk_token_id:
+                            think_end_id = None
+                    except (AttributeError, KeyError, TypeError):
+                        pass
+
+                if think_start_id is not None and think_end_id is not None:
+                    from .api.thinking import ThinkingBudgetProcessor
+                    budget_proc = ThinkingBudgetProcessor(
+                        think_start_id=think_start_id,
+                        think_end_id=think_end_id,
+                        budget_min=request.sampling_params.thinking_budget_min,
+                        budget_max=request.sampling_params.thinking_budget_max,
+                    )
+                    logits_processors.append(budget_proc)
+
             # Clear stale mRoPE position state to prevent position
             # contamination from prior requests (VLM or text-only).
             if hasattr(self.model, "clear_vlm_position_state"):
