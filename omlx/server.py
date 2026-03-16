@@ -1729,6 +1729,12 @@ async def create_chat_completion(
     if merged_ct_kwargs:
         chat_kwargs["chat_template_kwargs"] = merged_ct_kwargs
 
+    # Pass thinking budget if specified
+    if request.thinking_budget_min is not None:
+        chat_kwargs["thinking_budget_min"] = request.thinking_budget_min
+    if request.thinking_budget_max is not None:
+        chat_kwargs["thinking_budget_max"] = request.thinking_budget_max
+
     if request.stream:
         return StreamingResponse(
             _with_sse_keepalive(
