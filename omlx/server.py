@@ -1649,6 +1649,14 @@ async def create_chat_completion(
             if k not in forced_keys:
                 merged_ct_kwargs[k] = v
 
+    # Extract thinking budget from chat_template_kwargs if not set as top-level fields.
+    # This allows clients that only support chat_template_kwargs (like OpenCode with
+    # @ai-sdk/openai-compatible) to pass thinking_budget_min/max.
+    if request.thinking_budget_min is None and "thinking_budget_min" in merged_ct_kwargs:
+        request.thinking_budget_min = merged_ct_kwargs.pop("thinking_budget_min")
+    if request.thinking_budget_max is None and "thinking_budget_max" in merged_ct_kwargs:
+        request.thinking_budget_max = merged_ct_kwargs.pop("thinking_budget_max")
+
     # Extract messages - different engines need different content handling
     is_vlm = isinstance(engine, VLMBatchedEngine)
     if engine.model_type == "gpt_oss":
