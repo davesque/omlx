@@ -64,6 +64,10 @@ class SamplingParams:
     stop: Optional[List[str]] = None
     stop_token_ids: Optional[List[int]] = None
 
+    # Thinking budget (for models with <think>...</think> tags)
+    thinking_budget_min: Optional[int] = None  # Min tokens before </think> allowed
+    thinking_budget_max: Optional[int] = None  # Max tokens before </think> forced
+
     # Logprobs settings (memory optimization: disabled by default)
     logprobs: bool = False  # Whether to return logprobs
     top_logprobs: Optional[int] = None  # Number of top logprobs (1-20)
