@@ -196,3 +196,67 @@ class ThinkingParser:
             return True
 
         return False
+
+
+class ThinkingBudgetProcessor:
+    """Logits processor that enforces min/max thinking token budgets.
+
+    Tracks whether the model is inside a <think>...</think> block by scanning
+    the token sequence for think_start_id and think_end_id.
+
+    - Below budget_min: sets </think> logit to -inf (prevents early closure)
+    - At/above budget_max: sets all logits except </think> to -inf (forces closure)
+    - Outside a thinking block or between min and max: no-op
+
+    Signature matches mlx-lm logits processor convention:
+        processor(tokens: mx.array, logits: mx.array) -> mx.array
+    """
+
+    def __init__(
+        self,
+        think_start_id: int,
+        think_end_id: int,
+        budget_min: int | None = None,
+        budget_max: int | None = None,
+    ):
+        self.think_start_id = think_start_id
+        self.think_end_id = think_end_id
+        self.budget_min = budget_min
+        self.budget_max = budget_max
+
+    def __call__(self, tokens: "mx.array", logits: "mx.array") -> "mx.array":
+        import mlx.core as mx
+
+        if self.budget_min is None and self.budget_max is None:
+            return logits
+
+        # Find the last <think> and </think> positions in the token sequence
+        token_list = tokens.tolist()
+        last_think_start = -1
+        last_think_end = -1
+        for i, t in enumerate(token_list):
+            if t == self.think_start_id:
+                last_think_start = i
+            elif t == self.think_end_id:
+                last_think_end = i
+
+        # Not in a thinking block: no-op
+        if last_think_start < 0 or last_think_end > last_think_start:
+            return logits
+
+        # Count tokens generated since <think> (excluding the <think> token itself)
+        thinking_tokens = len(token_list) - last_think_start - 1
+
+        # Below min: suppress </think> to prevent early closure
+        if self.budget_min is not None and thinking_tokens < self.budget_min:
+            logits = mx.array(logits)  # ensure writable copy
+            logits[0, self.think_end_id] = float('-inf')
+            return logits
+
+        # At/above max: force </think> by zeroing everything else
+        if self.budget_max is not None and thinking_tokens >= self.budget_max:
+            forced = mx.full(logits.shape, float('-inf'))
+            forced[0, self.think_end_id] = logits[0, self.think_end_id]
+            return forced
+
+        return logits

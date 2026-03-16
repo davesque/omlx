@@ -279,3 +279,113 @@ class TestCleanOutputTextBackwardCompat:
         from omlx.api.utils import clean_output_text
         result = clean_output_text("<|im_end|>Hello<|endoftext|>")
         assert result == "Hello"
+
+
+class TestThinkingBudgetProcessor:
+    """Tests for ThinkingBudgetProcessor logits processor."""
+
+    THINK_START_ID = 100  # Fake token IDs for testing
+    THINK_END_ID = 101
+    VOCAB_SIZE = 200
+
+    def _make_processor(self, budget_min=None, budget_max=None):
+        from omlx.api.thinking import ThinkingBudgetProcessor
+        return ThinkingBudgetProcessor(
+            think_start_id=self.THINK_START_ID,
+            think_end_id=self.THINK_END_ID,
+            budget_min=budget_min,
+            budget_max=budget_max,
+        )
+
+    def _make_logits(self):
+        """Create uniform logits tensor."""
+        import mlx.core as mx
+        return mx.zeros((1, self.VOCAB_SIZE))
+
+    def test_no_budget_passthrough(self):
+        """With no budgets set, logits are unchanged."""
+        import mlx.core as mx
+        proc = self._make_processor()
+        logits = self._make_logits()
+        tokens = mx.array([self.THINK_START_ID, 10, 11, 12, 13, 14])
+        result = proc(tokens, logits)
+        assert mx.array_equal(result, logits)
+
+    def test_min_suppresses_close_tag(self):
+        """Below min budget, </think> logit should be -inf."""
+        import mlx.core as mx
+        proc = self._make_processor(budget_min=10)
+        logits = self._make_logits()
+        tokens = mx.array([self.THINK_START_ID, 10, 11, 12])
+        result = proc(tokens, logits)
+        assert result[0, self.THINK_END_ID].item() == float('-inf')
+        assert result[0, 0].item() == 0.0
+
+    def test_min_allows_close_tag_when_met(self):
+        """At or above min budget, </think> logit should not be suppressed."""
+        import mlx.core as mx
+        proc = self._make_processor(budget_min=3)
+        logits = self._make_logits()
+        tokens = mx.array([self.THINK_START_ID, 10, 11, 12])
+        result = proc(tokens, logits)
+        assert result[0, self.THINK_END_ID].item() == 0.0
+
+    def test_max_forces_close_tag(self):
+        """At max budget, all logits except </think> should be -inf."""
+        import mlx.core as mx
+        proc = self._make_processor(budget_max=3)
+        logits = self._make_logits()
+        tokens = mx.array([self.THINK_START_ID, 10, 11, 12])
+        result = proc(tokens, logits)
+        assert result[0, self.THINK_END_ID].item() == 0.0
+        assert result[0, 0].item() == float('-inf')
+        assert result[0, 50].item() == float('-inf')
+
+    def test_max_not_triggered_below_limit(self):
+        """Below max budget, logits are not forced."""
+        import mlx.core as mx
+        proc = self._make_processor(budget_max=10)
+        logits = self._make_logits()
+        tokens = mx.array([self.THINK_START_ID, 10, 11, 12])
+        result = proc(tokens, logits)
+        assert mx.array_equal(result, logits)
+
+    def test_not_in_thinking_block(self):
+        """If no <think> token in sequence, processor is a no-op."""
+        import mlx.core as mx
+        proc = self._make_processor(budget_min=5, budget_max=10)
+        logits = self._make_logits()
+        tokens = mx.array([10, 11, 12, 13])
+        result = proc(tokens, logits)
+        assert mx.array_equal(result, logits)
+
+    def test_after_thinking_closed(self):
+        """After </think> is emitted, processor is a no-op."""
+        import mlx.core as mx
+        proc = self._make_processor(budget_min=5, budget_max=10)
+        logits = self._make_logits()
+        tokens = mx.array([self.THINK_START_ID, 10, 11, self.THINK_END_ID, 12, 13])
+        result = proc(tokens, logits)
+        assert mx.array_equal(result, logits)
+
+    def test_min_and_max_together(self):
+        """Min and max work together: suppress below min, force at max."""
+        import mlx.core as mx
+        proc = self._make_processor(budget_min=3, budget_max=5)
+        logits = self._make_logits()
+
+        # 2 tokens — below min: suppress </think>
+        tokens_below = mx.array([self.THINK_START_ID, 10, 11])
+        result = proc(tokens_below, logits)
+        assert result[0, self.THINK_END_ID].item() == float('-inf')
+
+        # 4 tokens — between min and max: no modification
+        tokens_between = mx.array([self.THINK_START_ID, 10, 11, 12, 13])
+        result = proc(tokens_between, logits)
+        assert mx.array_equal(result, logits)
+
+        # 5 tokens — at max: force </think>
+        tokens_at_max = mx.array([self.THINK_START_ID, 10, 11, 12, 13, 14])
+        result = proc(tokens_at_max, logits)
+        assert result[0, self.THINK_END_ID].item() == 0.0
+        assert result[0, 0].item() == float('-inf')
