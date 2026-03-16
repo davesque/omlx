@@ -64,6 +64,24 @@ class TestExtractThinking:
         assert "middle" in content
         assert "end" in content
 
+    def test_leaked_reasoning_after_forced_close(self):
+        """Stray </think> after forced budget closure — leaked reasoning is captured."""
+        thinking, content = extract_thinking(
+            "<think>short</think>leaked reasoning here</think>actual answer"
+        )
+        assert "short" in thinking
+        assert "leaked reasoning here" in thinking
+        assert content == "actual answer"
+
+    def test_leaked_reasoning_no_content_after(self):
+        """Stray </think> at end of text."""
+        thinking, content = extract_thinking(
+            "<think>short</think>leaked stuff</think>"
+        )
+        assert "short" in thinking
+        assert "leaked stuff" in thinking
+        assert content == ""
+
     def test_thinking_with_special_chars(self):
         """Thinking with special characters."""
         thinking, content = extract_thinking(
@@ -239,6 +257,27 @@ class TestThinkingParser:
         assert "**4**" in content
         assert "<think>" not in thinking
         assert "</think>" not in content
+
+    def test_leaked_reasoning_single_chunk(self):
+        """Stray </think> in single chunk recaptures leaked reasoning."""
+        parser = ThinkingParser()
+        t, c = parser.feed("<think>short</think>leaked stuff</think>answer")
+        assert "short" in t
+        assert "leaked stuff" in t
+        assert c == "answer"
+
+    def test_leaked_reasoning_across_chunks(self):
+        """Stray </think> across chunks — leaked text in same feed() is recaptured."""
+        parser = ThinkingParser()
+
+        t1, c1 = parser.feed("<think>short</think>")
+        assert t1 == "short"
+        assert c1 == ""
+
+        # Leaked reasoning followed by stray </think> and real answer
+        t2, c2 = parser.feed("leaked reasoning</think>real answer")
+        assert "leaked reasoning" in t2
+        assert c2 == "real answer"
 
 
 class TestCleanSpecialTokens:

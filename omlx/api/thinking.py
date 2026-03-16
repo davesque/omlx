@@ -57,7 +57,18 @@ def extract_thinking(text: str) -> Tuple[str, str]:
         remaining = remaining[:match.start()] + remaining[match.end():]
 
     if thinking_parts:
-        thinking = "\n".join(thinking_parts).strip()
+        # After extracting <think>...</think> blocks, check remaining for
+        # stray </think> tags (leaked reasoning from forced budget closure).
+        # Text before a stray </think> is additional thinking content.
+        while '</think>' in remaining:
+            match = _THINKING_TAIL_PATTERN.match(remaining.lstrip())
+            if match:
+                leaked = remaining.lstrip()[:match.end()]
+                thinking_parts.append(match.group(1).strip())
+                remaining = remaining.lstrip()[match.end():]
+            else:
+                break
+        thinking = "\n".join(p for p in thinking_parts if p).strip()
         return (thinking, remaining.strip())
 
     # Handle partial: content before </think> without <think> tag
@@ -130,6 +141,12 @@ class ThinkingParser:
 
                 # Try to match </think>
                 if remaining.startswith(_CLOSE_TAG):
+                    if not self._in_thinking:
+                        # Stray </think> while not in thinking mode — leaked
+                        # reasoning from forced budget closure. Reclassify
+                        # content accumulated in THIS feed() call as thinking.
+                        thinking_out.extend(content_out)
+                        content_out = []
                     self._in_thinking = False
                     i += _CLOSE_LEN
                     continue
