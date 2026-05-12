@@ -226,6 +226,15 @@ class BatchedEngine(BaseEngine):
         from ..engine_core import get_mlx_executor
 
         def _load_model_sync():
+            # Try the JANG loader first. See omlx/loaders/jang.py for
+            # why stock mlx-lm load is insufficient for JANG checkpoints.
+            # Returns None when not a JANG model so we fall through to
+            # the standard mlx-lm path with no extra overhead.
+            from ..loaders.jang import try_load_jang_text
+
+            jang_result = try_load_jang_text(self._model_name)
+            if jang_result is not None:
+                return jang_result
             return load(
                 self._model_name,
                 tokenizer_config=tokenizer_config,

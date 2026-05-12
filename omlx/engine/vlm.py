@@ -593,6 +593,19 @@ class VLMBatchedEngine(BaseEngine):
         def _load_vlm_sync():
             _patch_video_processor_bug()
             _patch_torch_free_image_processor()
+            # Try the JANG loader first. JANG checkpoints ship a
+            # jang_config.json next to config.json that carries per-tensor
+            # bit-widths and AWQ scales; the default mlx-vlm load path
+            # ignores both and silently produces garbage. The JANG loader
+            # returns the same (model, processor) tuple shape so nothing
+            # downstream needs to know which path was taken. Returns
+            # None when the checkpoint isn't a JANG model, falling through
+            # to mlx-vlm's standard load.
+            from ..loaders.jang import try_load_jang_vlm
+
+            jang_result = try_load_jang_vlm(self._model_name)
+            if jang_result is not None:
+                return jang_result
             with _strip_audio_config_if_orphaned(Path(self._model_name)):
                 return vlm_load(
                     self._model_name, trust_remote_code=self._trust_remote_code

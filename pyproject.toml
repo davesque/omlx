@@ -90,6 +90,16 @@ mcp = [
 modelscope = [
     "modelscope>=1.10.0",
 ]
+jang = [
+    # JANG / JANGTQ adaptive mixed-precision quantization runtime.
+    # PyPI distribution name is ``jang`` (import name is ``jang_tools``).
+    # Required to load checkpoints published under HF orgs like JANGQ-AI/
+    # and dealignai/. omlx does not vendor jang_tools — the loader hook
+    # in ``omlx/loaders/jang.py`` imports the public ``load_jang_model``
+    # and ``load_jang_vlm_model`` entry points, so this stays a runtime
+    # dep we pin minimally rather than a build-time fork.
+    "jang>=2.5.27",
+]
 audio = [
     # mlx-audio from commit (5175326) with tts/stt/sts extras
     # tts extra: misaki, num2words, spacy, phonemizer-fork, espeakng-loader, sentencepiece
